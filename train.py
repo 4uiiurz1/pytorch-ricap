@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument('--dataset', default='cifar10',
                         choices=['cifar10', 'cifar100'],
                         help='dataset name')
-    parser.add_argument('--ricap', default=True, type=str2bool,
+    parser.add_argument('--ricap', default=False, type=str2bool,
                         help='use RICAP')
     parser.add_argument('--beta', default=0.3, type=float)
     parser.add_argument('--depth', default=28, type=int)
