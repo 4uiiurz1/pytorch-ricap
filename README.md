@@ -19,3 +19,15 @@ python train.py --dataset cifar10 --ricap True
 ```
 
 ## Results
+| Model                                    |   Error rate (%)  |
+|:-----------------------------------------|:-----------------:|
+| WideResNet28-10 baseline                 |              4.70 |
+| WideResNet28-10 +RICAP                   |              3.94 |
+| WideResNet28-10 baseline (original paper)|              3.89 |
+| WideResNet28-10 +RICAP (original paper)  |              2.85 |
+
+Learning curves of loss and accuracy.
+
+![loss](loss.png)
+
+![acc](acc.png)

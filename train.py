@@ -271,6 +271,8 @@ def main():
             best_acc = val_log['acc']
             print("=> saved best model")
 
+    print("best val_acc: %f" %best_acc)
+
 
 if __name__ == '__main__':
     main()
