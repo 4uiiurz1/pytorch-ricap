@@ -1,7 +1,7 @@
 # A PyTorch implementation of RICAP
-This repository contains code for a data augmentation method **RICAP (Random Image Cropping And Patching)** based on [[Data Augmentation using Random Image Cropping and Patching for Deep CNNs](https://arxiv.org/abs/1811.09030) implemented in PyTorch.
+This repository contains code for a data augmentation method **RICAP (Random Image Cropping And Patching)** based on [Data Augmentation using Random Image Cropping and Patching for Deep CNNs](https://arxiv.org/abs/1811.09030) implemented in PyTorch.
 
-[example](example.png)
+![example](example.png)
 
 ## Requirements
 - Python 3.6
