@@ -25,11 +25,20 @@ def parse_args():
     parser.add_argument('--dataset', default='cifar10',
                         choices=['cifar10', 'cifar100'],
                         help='dataset name')
-    parser.add_argument('--ricap', default=False, type=str2bool,
-                        help='use RICAP')
-    parser.add_argument('--beta', default=0.3, type=float)
     parser.add_argument('--depth', default=28, type=int)
     parser.add_argument('--width', default=10, type=int)
+    parser.add_argument('--ricap', default=False, type=str2bool,
+                        help='use RICAP')
+    parser.add_argument('--ricap-beta', default=0.3, type=float)
+    parser.add_argument('--random-erase', default=False, type=str2bool,
+                        help='use Random Erasing')
+    parser.add_argument('--random-erase-prob', default=0.5, type=float)
+    parser.add_argument('--random-erase-sl', default=0.02, type=float)
+    parser.add_argument('--random-erase-sh', default=0.4, type=float)
+    parser.add_argument('--random-erase-r', default=0.3, type=float)
+    parser.add_argument('--mixup', default=False, type=str2bool,
+                        help='use Mixup')
+    parser.add_argument('--mixup-alpha', default=1.0, type=float)
 
     args = parser.parse_args()
 
@@ -47,8 +56,8 @@ def train(args, train_loader, model, criterion, optimizer, epoch, scheduler=None
         if args.ricap:
             I_x, I_y = input.size()[2:]
 
-            w = int(np.round(I_x * np.random.beta(args.beta, args.beta)))
-            h = int(np.round(I_y * np.random.beta(args.beta, args.beta)))
+            w = int(np.round(I_x * np.random.beta(args.ricap_beta, args.ricap_beta)))
+            h = int(np.round(I_y * np.random.beta(args.ricap_beta, args.ricap_beta)))
             w_ = [w, I_x - w, w, I_x - w]
             h_ = [h, h, I_y - h, I_y - h]
 
@@ -72,7 +81,25 @@ def train(args, train_loader, model, criterion, optimizer, epoch, scheduler=None
             output = model(patched_images)
             loss = sum([W_[k] * criterion(output, c_[k]) for k in range(4)])
 
-            acc1 = sum([W_[k] * accuracy(output, c_[k])[0] for k in range(4)])
+            acc = sum([W_[k] * accuracy(output, c_[k])[0] for k in range(4)])
+
+        elif args.mixup:
+            l = np.random.beta(args.mixup_alpha, args.mixup_alpha)
+
+            idx = torch.randperm(input.size(0))
+            input_a, input_b = input, input[idx]
+            target_a, target_b = target, target[idx]
+
+            mixed_input = l * input_a + (1 - l) * input_b
+
+            target_a = target_a.cuda()
+            target_b = target_b.cuda()
+            mixed_input = mixed_input.cuda()
+
+            output = model(mixed_input)
+            loss = l * criterion(output, target_a) + (1 - l) * criterion(output, target_b)
+
+            acc = l * accuracy(output, target_a)[0] + (1 - l) * accuracy(output, target_b)[0]
 
         else:
             input = input.cuda()
@@ -81,10 +108,10 @@ def train(args, train_loader, model, criterion, optimizer, epoch, scheduler=None
             output = model(input)
             loss = criterion(output, target)
 
-            acc1, _ = accuracy(output, target, topk=(1, 5))
+            acc = accuracy(output, target)[0]
 
         losses.update(loss.item(), input.size(0))
-        scores.update(acc1.item(), input.size(0))
+        scores.update(acc.item(), input.size(0))
 
         # compute gradient and do optimizing step
         optimizer.zero_grad()
@@ -131,10 +158,13 @@ def main():
     args = parse_args()
 
     if args.name is None:
+        args.name = '%s_WideResNet%s-%s' %(args.dataset, args.depth, args.width)
         if args.ricap:
-            args.name = '%s_WideResNet_%sx%s_wRICAP' %(args.dataset, args.depth, args.width)
-        else:
-            args.name = '%s_WideResNet_%sx%s_woRICAP' %(args.dataset, args.depth, args.width)
+            args.name += '_wRICAP'
+        if args.random_erase:
+            args.name += '_wRandomErasing'
+        if args.mixup:
+            args.name += '_wMixup'
 
     if not os.path.exists('models/%s' %args.name):
         os.makedirs('models/%s' %args.name)
@@ -156,13 +186,24 @@ def main():
 
     # data loading code
     if args.dataset == 'cifar10':
-        transform_train = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                 (0.2023, 0.1994, 0.2010)),
-        ])
+        if args.random_erase:
+            transform_train = transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                RandomErase(args.random_erase_prob, args.random_erase_sl,
+                            args.random_erase_sh, args.random_erase_r),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                     (0.2023, 0.1994, 0.2010)),
+            ])
+        else:
+            transform_train = transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                     (0.2023, 0.1994, 0.2010)),
+            ])
 
         transform_test = transforms.Compose([
             transforms.ToTensor(),
@@ -192,14 +233,27 @@ def main():
             shuffle=False,
             num_workers=8)
 
+        num_classes = 10
+
     elif args.dataset == 'cifar100':
-        transform_train = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                 (0.2023, 0.1994, 0.2010)),
-        ])
+        if args.random_erase:
+            transform_train = transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                RandomErase(args.random_erase_prob, args.random_erase_sl,
+                            args.random_erase_sh, args.random_erase_r),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                     (0.2023, 0.1994, 0.2010)),
+            ])
+        else:
+            transform_train = transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                     (0.2023, 0.1994, 0.2010)),
+            ])
 
         transform_test = transforms.Compose([
             transforms.ToTensor(),
@@ -229,8 +283,10 @@ def main():
             shuffle=False,
             num_workers=8)
 
+        num_classes = 100
+
     # create model
-    model = WideResNet(args.depth, args.width)
+    model = WideResNet(args.depth, args.width, num_classes=num_classes)
     model = model.cuda()
 
     optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=0.1,
@@ -271,7 +327,7 @@ def main():
             best_acc = val_log['acc']
             print("=> saved best model")
 
-    print("best val_acc: %f" %best_acc)
+    print("best val_acc: %f" %best_acc)            
 
 
 if __name__ == '__main__':
