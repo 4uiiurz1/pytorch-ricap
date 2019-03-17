@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 
@@ -5,12 +7,13 @@ import torch.nn as nn
 def conv3x3(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=1)
+                    padding=1, bias=False)
 
 
 def conv1x1(in_planes, out_planes, stride=1):
     """1x1 convolution"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride)
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride,
+                    bias=False)
 
 
 class BasicBlock(nn.Module):
@@ -23,19 +26,20 @@ class BasicBlock(nn.Module):
         self.conv2 = conv3x3(planes, planes)
         self.relu = nn.ReLU(inplace=True)
         if stride != 1 or inplanes != planes:
-            self.residual = conv1x1(inplanes, planes, stride)
+            self.shortcut = conv1x1(inplanes, planes, stride)
             self.use_conv1x1 = True
         else:
             self.use_conv1x1 = False
 
     def forward(self, x):
-        if self.use_conv1x1:
-            residual = self.residual(x)
-        else:
-            residual = x
-
         out = self.bn1(x)
         out = self.relu(out)
+
+        if self.use_conv1x1:
+            shortcut = self.shortcut(out)
+        else:
+            shortcut = x
+
         out = self.conv1(out)
 
         out = self.bn2(out)
@@ -43,7 +47,7 @@ class BasicBlock(nn.Module):
         out = self.dropout(out)
         out = self.conv2(out)
 
-        out += residual
+        out += shortcut
 
         return out
 
@@ -64,12 +68,15 @@ class WideResNet(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(64*width, num_classes)
 
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                m.weight.data = nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
+
     def _make_layer(self, planes, blocks, dropout, stride=1):
         layers = []
-        layers.append(BasicBlock(self.inplanes, planes, dropout, stride))
-        self.inplanes = planes
-        for _ in range(1, blocks):
-            layers.append(BasicBlock(self.inplanes, planes, dropout, stride))
+        for i in range(blocks):
+            layers.append(BasicBlock(self.inplanes, planes, dropout, stride if i == 0 else 1))
+            self.inplanes = planes
 
         return nn.Sequential(*layers)
 

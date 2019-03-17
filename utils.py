@@ -37,20 +37,6 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def adjust_learning_rate(optimizer, epoch):
-    lr = 0.1
-    if epoch >= 60:
-        lr = 0.02
-    if epoch >= 120:
-        lr = 0.004
-    if epoch >= 160:
-        lr = 0.0008
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-
-    return lr
-
-
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
     with torch.no_grad():

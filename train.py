@@ -10,6 +10,7 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim import lr_scheduler
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
@@ -39,6 +40,13 @@ def parse_args():
     parser.add_argument('--mixup', default=False, type=str2bool,
                         help='use Mixup')
     parser.add_argument('--mixup-alpha', default=1.0, type=float)
+    parser.add_argument('--epochs', default=200, type=int)
+    parser.add_argument('--lr', '--learning-rate', default=1e-1, type=float)
+    parser.add_argument('--milestones', default='60,120,160', type=str)
+    parser.add_argument('--gamma', default=0.2, type=float)
+    parser.add_argument('--momentum', default=0.9, type=float)
+    parser.add_argument('--weight-decay', default=5e-4, type=float)
+    parser.add_argument('--nesterov', default=False, type=str2bool)
 
     args = parser.parse_args()
 
@@ -289,30 +297,33 @@ def main():
     model = WideResNet(args.depth, args.width, num_classes=num_classes)
     model = model.cuda()
 
-    optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=0.1,
-            momentum=0.9, weight_decay=1e-4)
+    optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr,
+            momentum=args.momentum, weight_decay=args.weight_decay)
+
+    scheduler = lr_scheduler.MultiStepLR(optimizer,
+            milestones=[int(e) for e in args.milestones.split(',')], gamma=args.gamma)
 
     log = pd.DataFrame(index=[], columns=[
         'epoch', 'lr', 'loss', 'acc', 'val_loss', 'val_acc'
     ])
 
     best_acc = 0
-    for epoch in range(200):
-        print('Epoch [%d/%d]' %(epoch, 200))
+    for epoch in range(args.epochs):
+        print('Epoch [%d/%d]' %(epoch+1, args.epochs))
+
+        scheduler.step()
 
         # train for one epoch
         train_log = train(args, train_loader, model, criterion, optimizer, epoch)
         # evaluate on validation set
         val_log = validate(args, test_loader, model, criterion)
 
-        lr = adjust_learning_rate(optimizer, epoch)
-
         print('loss %.4f - acc %.4f - val_loss %.4f - val_acc %.4f'
             %(train_log['loss'], train_log['acc'], val_log['loss'], val_log['acc']))
 
         tmp = pd.Series([
             epoch,
-            lr,
+            scheduler.get_lr()[0],
             train_log['loss'],
             train_log['acc'],
             val_log['loss'],
@@ -326,8 +337,6 @@ def main():
             torch.save(model.state_dict(), 'models/%s/model.pth' %args.name)
             best_acc = val_log['acc']
             print("=> saved best model")
-
-    print("best val_acc: %f" %best_acc)            
 
 
 if __name__ == '__main__':
