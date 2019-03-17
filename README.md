@@ -5,7 +5,7 @@ This repository contains code for a data augmentation method **RICAP (Random Ima
 
 ## Requirements
 - Python 3.6
-- PyTorch 0.4
+- PyTorch 0.4 or 1.0
 
 ## Training
 ### CIFAR-10
